@@ -1,0 +1,8 @@
+# Don't copy these into the Docker image
+node_modules
+*/node_modules
+client/dist
+.env
+.git
+.gitignore
+*.md

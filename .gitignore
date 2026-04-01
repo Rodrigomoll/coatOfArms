@@ -1,0 +1,17 @@
+# Never commit your secrets
+.env
+
+# Node dependencies
+node_modules/
+server/node_modules/
+client/node_modules/
+
+# React build output
+client/dist/
+
+# OS files
+.DS_Store
+
+# Google Credential Files
+google-credential.json
+server/gen-lang-client-0489626499-4cb18120d4ba.json
