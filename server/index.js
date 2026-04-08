@@ -1,4 +1,3 @@
-const { GoogleAuth } = require('google-auth-library');
 // ─────────────────────────────────────────────────────────────────────────────
 // server/index.js  —  The Brain
 //
@@ -276,8 +275,70 @@ Return ONLY a valid JSON object with exactly these keys (no other text, no markd
     };
   }
 
+  const symbolMessages = [
+    {
+      role: 'system',
+      content: ` You are a heraldic visual designer and return ONLY valid JSON with these keys, no markdown: {
+      "personality": "...",
+      "family": "...",
+      "hobbies": "...",
+      "workExperience": "...",
+      "accomplishments": "...",
+      "education": "..."  
+      }
+        Rule 1 - Be specific per section
+        personality = who the person IS as a human being
+        family = their family situation and story
+        hobbies = what they do for fun
+        workExperience = their professional background
+        accomplishments = their proudest and joyful moments
+        education = their academic journey
+        
+        Rule 2 - Stay personal use their words
+        Use the person's exact words as your inspiration. The description must reflect THEIR specific story, not a generic symbol.
+        
+        Rule 3 - Describe a scene not a symbol
+        A specific visual scene or object that someone looking at it would immediately connect to what the person described.
+
+        Rule 4 — No text, letters, numbers
+        Never include text, letters, numbers, code, or written words in your descriptions
+
+        Rule 5 — No generic heraldic symbols
+        Avoid generic symbols like chains, compasses, scrolls, or shields unless they are directly meaningful to the person's answer.
+
+        Rule 6 — Each section must be different
+        Each of the 6 descriptions must be visually distinct from each other. No repeated imagery across sections.
+        `
+        ,
+    },
+    {
+      role: 'user',
+      content: `Convert these into visual symbols:
+  personality (draw a scene that shows a person embodying these character traits in action): ${answers.personality}
+  family (draw a warm scene showing the family's bond, cultural roots, and shared story): ${answers.family}
+  hobbies (draw a vivid scene showing someone actively doing these activities): ${answers.hobbies}
+  workExperience (draw a scene representing the professional world and skills from these jobs): ${answers.workExperience}
+  accomplishments (draw a moment of victory, pride, or achievement based on these accomplishments): ${answers.accomplishments}
+  education (draw a scene representing academic growth, learning, and knowledge from this journey): ${answers.education}`,
+    },
+  ];
+
+  const symbolJson = await callGeminiChat(symbolMessages);
+  const cleanSymbols = symbolJson.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+  try {
+    const symbols = JSON.parse(cleanSymbols);
+    answers.personality = symbols.personality;
+    answers.family = symbols.family;
+    answers.hobbies = symbols.hobbies;
+    answers.workExperience = symbols.workExperience;
+    answers.accomplishments = symbols.accomplishments;
+    answers.education = symbols.education;
+  } catch {
+    console.warn('Could not parse symbols, using raw answers');
+  }
+
   // Build the final image generation prompt using the template from the system
-  return `A beautiful, highly detailed Coat of Arms and decorative crest designed strictly in a ${answers.artStyle} art style. The overall mood, textures, colors, and linework should perfectly reflect this ${answers.artStyle} aesthetic. The crest shield is divided into six distinct sections: Section 1 (top-left): A symbol representing ${answers.personality}. Section 2 (top-right): A symbol representing ${answers.family}. Section 3 (middle-left): A symbol representing ${answers.hobbies}. Section 4 (middle-right): A symbol representing ${answers.workExperience}. Section 5 (bottom-left): A symbol representing ${answers.accomplishments}. Section 6 (bottom-right): A symbol representing ${answers.education}. At the base of the crest, an elegant ribbon banner containing the text: '${answers.values}'. The entire composition must be cohesive, treating the six elements so they harmoniously blend into the chosen ${answers.artStyle} aesthetic rather than looking like separate icons. Centered composition on a complementary background.`;
+  return `A beautiful, highly detailed Coat of Arms and decorative crest designed strictly in a ${answers.artStyle} art style. The overall mood, textures, colors, and linework should perfectly reflect this ${answers.artStyle} aesthetic. The crest shield is divided into six distinct sections: Section 1 (top-left): A symbol representing ${answers.personality}. Section 2 (top-right): A symbol representing ${answers.family}. Section 3 (middle-left): A symbol representing ${answers.hobbies}. Section 4 (middle-right): A symbol representing ${answers.workExperience}. Section 5 (bottom-left): A symbol representing ${answers.accomplishments}. Section 6 (bottom-right): A symbol representing ${answers.education}. At the base of the crest, an elegant ribbon banner containing the text: '${answers.values}'. The entire composition must be cohesive, treating the six elements so they harmoniously blend into the chosen ${answers.artStyle} aesthetic rather than looking like separate icons. Centered composition on a complementary background. Do not include any text, words, or labels anywhere in the image.`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -287,23 +348,15 @@ Return ONLY a valid JSON object with exactly these keys (no other text, no markd
 // Returns either a URL or a base64 data URL (handles both formats).
 // ─────────────────────────────────────────────────────────────────────────────
 async function generateImage(prompt) {
-  const auth = new GoogleAuth({
-    credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS || '{}'),
-    scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-  });
-
-  const token = await auth.getAccessToken();
-  const projectId = process.env.GOOGLE_PROJECT_ID;
-  const url = `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/imagen-3.0-generate-002:predict`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${process.env.GEMINI_API_KEY}`;
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
     },
     body: JSON.stringify({
-      instances: [{ prompt: prompt }],
-      parameters: { sampleCount: 1 }
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { responseModalities: ["TEXT", "IMAGE"]}
     }),
   });
 
@@ -313,9 +366,9 @@ async function generateImage(prompt) {
   }
 
   const data = await response.json();
-  const imageData = data.predictions[0]
-
-  return `data:${imageData.mimeType};base64,${imageData.bytesBase64Encoded}`
+  const parts = data.candidates[0].content.parts;
+  const imagePart = parts.find(p => p.inlineData);
+  return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
